@@ -1,14 +1,33 @@
+require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
+const unirest = require('unirest');
+
+if (process.env.ALLOW_INSECURE_TLS === '1') {
+  // For environments with custom corporate roots; less secure.
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
+const ALPACA_DATA_DIR = path.join(DATA_DIR, 'alpaca');
 const DEFAULT_SERIES_LIMIT = 240;
+const ALPACA_TRADING_URL = 'https://paper-api.alpaca.markets/v2';
+const ALPACA_DATA_URL = process.env.ALPACA_DATA_URL || 'https://data.alpaca.markets/v2';
+
+const configPath = path.join(__dirname, 'config.json');
+const config = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
+const ALPACA_KEY = process.env.APCA_API_KEY_ID || process.env.ALPACA_KEY || config?.alpaca?.paper?.apiKey || 'PK6JADDEGWV35H0YBCZP';
+const ALPACA_SECRET = process.env.APCA_API_SECRET_KEY || process.env.ALPACA_SECRET || config?.alpaca?.paper?.secretKey || '';
 
 app.use(express.json());
 app.use(express.static('public'));
+
+if (!fs.existsSync(ALPACA_DATA_DIR)) {
+  fs.mkdirSync(ALPACA_DATA_DIR, { recursive: true });
+}
 
 const assets = loadAssets();
 
@@ -62,19 +81,36 @@ app.get('/api/insights', (req, res) => {
   });
 });
 
+app.post('/api/alpaca/sync', async (req, res) => {
+  try {
+    if (!ALPACA_KEY || !ALPACA_SECRET) {
+      return res.status(400).send({ message: 'Alpaca credentials missing. Set APCA_API_KEY_ID and APCA_API_SECRET_KEY.' });
+    }
+    const summary = await syncAlpacaData();
+    res.send(summary);
+  } catch (err) {
+    console.warn('Alpaca sync error:', err);
+    res.status(500).send({ message: err.message, stack: process.env.NODE_ENV === 'development' ? err.stack : undefined });
+  }
+});
+
 app.use((req, res) => {
   res.status(404).send({ message: 'Route not found' });
 });
 
 app.listen(PORT, () => {
   console.log(`Stock Hawk listening on http://localhost:${PORT}`);
+  if (process.env.ALPACA_SYNC_ON_START === '1') {
+    syncAlpacaData().catch(err => console.warn('Alpaca sync failed:', err.message));
+  }
 });
 
 function loadAssets() {
   const map = new Map();
   const files = fs.readdirSync(DATA_DIR)
     .filter(file => file.toLowerCase().endsWith('.json'))
-    .filter(file => !file.toLowerCase().startsWith('symbol'));
+    .filter(file => !file.toLowerCase().startsWith('symbol'))
+    .filter(file => !file.toLowerCase().includes('.alpaca.'));
 
   for (const file of files) {
     const fullPath = path.join(DATA_DIR, file);
@@ -257,4 +293,89 @@ function getLastUpdated() {
     }
   });
   return latestTs ? new Date(latestTs).toISOString() : null;
+}
+
+async function syncAlpacaData() {
+  console.log('Starting Alpaca sync...');
+
+  const throttleMs = parseInt(process.env.ALPACA_SYNC_DELAY_MS || '200', 10);
+  const limitSymbols = process.env.ALPACA_SYNC_LIMIT ? parseInt(process.env.ALPACA_SYNC_LIMIT, 10) : null;
+
+  const assetsList = await fetchAlpacaAssets();
+  const equities = assetsList.filter(a => a.asset_class === 'us_equity' && a.tradable);
+  const symbols = limitSymbols ? equities.slice(0, limitSymbols) : equities;
+
+  let success = 0;
+  let failures = 0;
+
+  for (const asset of symbols) {
+    try {
+      const bar = await fetchLatestBar(asset.symbol);
+      if (bar) {
+        const payload = {
+          meta: asset,
+          bar
+        };
+        const target = path.join(ALPACA_DATA_DIR, `${asset.symbol}.alpaca.json`);
+        fs.writeFileSync(target, JSON.stringify(payload, null, 2));
+        success += 1;
+      } else {
+        failures += 1;
+      }
+    } catch (err) {
+      failures += 1;
+      console.warn(`Alpaca fetch failed for ${asset.symbol}: ${err.message}`);
+    }
+    if (throttleMs > 0) {
+      await delay(throttleMs);
+    }
+  }
+
+  console.log(`Alpaca sync complete. Saved ${success}, failed ${failures}.`);
+  return { fetched: success, failed: failures, total: symbols.length, delayMs: throttleMs };
+}
+
+function fetchAlpacaAssets() {
+  return new Promise((resolve, reject) => {
+    const req = unirest('GET', `${ALPACA_TRADING_URL}/assets`);
+    req.headers({
+      'APCA-API-KEY-ID': ALPACA_KEY,
+      'APCA-API-SECRET-KEY': ALPACA_SECRET
+    });
+    req.end(res => {
+      if (res.error) return reject(res.error);
+      if (res.statusCode && res.statusCode >= 300) {
+        return reject(new Error(`Assets request failed (${res.statusCode})${res.body ? ': ' + JSON.stringify(res.body).slice(0, 400) : ''}`));
+      }
+      if (!Array.isArray(res.body)) return reject(new Error('Unexpected asset response'));
+      resolve(res.body);
+    });
+  });
+}
+
+function fetchLatestBar(symbol) {
+  return new Promise((resolve, reject) => {
+    const req = unirest('GET', `${ALPACA_DATA_URL}/stocks/${encodeURIComponent(symbol)}/bars`);
+    req.query({
+      timeframe: '1Day',
+      limit: 1,
+      adjustment: 'raw'
+    });
+    req.headers({
+      'APCA-API-KEY-ID': ALPACA_KEY,
+      'APCA-API-SECRET-KEY': ALPACA_SECRET
+    });
+    req.end(res => {
+      if (res.error) return reject(res.error);
+      if (res.statusCode && res.statusCode >= 300) {
+        return reject(new Error(`Bar request failed (${res.statusCode})${res.body ? ': ' + JSON.stringify(res.body).slice(0, 400) : ''}`));
+      }
+      const bar = res.body?.bars?.[0];
+      resolve(bar || null);
+    });
+  });
+}
+
+function delay(time) {
+  return new Promise(resolve => setTimeout(resolve, time));
 }

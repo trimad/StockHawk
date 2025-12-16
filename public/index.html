@@ -2,114 +2,76 @@
 <html lang="en">
 
 <head>
-
-  <link rel="stylesheet" type="text/css" href="css\style.css">
-  <link rel="stylesheet" type="text/css" href="css\index.css">
-  <link rel="stylesheet" type="text/css" href="css\scrollbar.css">
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <script src="js\index.js"></script>
-  <script src="lib\fontawesome.js"></script>
-
-  <title>Home</title>
-
+  <title>Stock Hawk · Research Terminal</title>
+  <link rel="stylesheet" href="css/app.css">
 </head>
 
 <body>
-
-  <div class="card-on header">
-    <a class="active" href="index.html"><i class="fa fa-fw fa-home"></i> Home</a>
-    <a href="algotrade.html"><i class="fas fa-robot"></i> Algotrade</a>
-    <span class="logo">
-      <span>Stock Hawk</span>
-      <i class="fas fa-feather-alt"></i>
-    </span>
-  </div>
-
-  <div class="wrapper">
-
-    <div class="card-on api-reference">
-      <h3>API Reference</h3>
-      <table>
-        <thead id="reference-thead">
-        </thead>
-        <tbody id="reference-tbody">
-        </tbody>
-      </table>
-
-
+  <section class="hero">
+    <div>
+      <div class="eyebrow">Stock Hawk · refreshed</div>
+      <h1>Find resilient ETFs and income plays with cached price data.</h1>
+      <p class="lede">This version runs locally, reads your stored Yahoo Finance snapshots, and surfaces trends without needing live API keys.</p>
+      <div class="pill-row">
+        <span class="pill" id="dataset-count">Loading datasets…</span>
+        <span class="pill" id="last-updated"> </span>
+      </div>
     </div>
-
-
-    <div class="card-on links">
-      <table style="width:100%">
-        <thead>
-          <tr>
-            <th>
-              <h3>Useful Links</h3>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>
-              <a href="https://iexcloud.io/docs/api/">IEX Cloud API Reference</a>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <a href="https://en.wikipedia.org/wiki/Linear_regression">Linear Regression</a>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <a href="https://en.wikipedia.org/wiki/Polynomial_regression">Polynomial Regression</a>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <a href="https://github.com/Tom-Alexander/regression-js">Regression-JS Reference</a>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <a href="https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch">Fetch API
-                documentation</a>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <a href="https://www.epochconverter.com/">Epoch & Unix Timestamp Converter </a>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <a href="https://fontawesome.com/icons?m=free">Fontawesome Icons</a>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <a href="https://docs.rapidapi.com/docs/nodejs-unirest">Unirest API Reference</a>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <a href="https://app.alpaca.markets/paper/dashboard/overview">Alpaca Paper Trading
-                Dashboard</a>
-            </td>
-          </tr>
-          <tr>
-            <td>
-              <a href="https://polygon.io/docs/#!/Reference">Polygon API reference</a>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div>
+      <div class="pill-row" style="margin-bottom:10px;">
+        <button class="cta" id="refresh-button">Refresh view</button>
+        <button class="cta" id="alpaca-sync-button" style="background: var(--accent-2); color: #061121;">Sync Alpaca bars</button>
+      </div>
+      <p class="muted" style="margin-top:6px;">Select a symbol to see momentum, CAGR, drawdown, and a compact chart. Use “Sync Alpaca bars” to fetch the latest daily bar for every tradable US equity (stored in <code>data/alpaca/</code>).</p>
+      <div class="muted" id="sync-status"></div>
     </div>
+  </section>
 
-  </div>
+  <main class="layout">
+    <section class="panel watch">
+      <header>
+        <h3>Watchlist</h3>
+      </header>
+      <input class="search" type="search" id="search" placeholder="Filter by symbol or name…" autocomplete="off">
+      <div class="asset-list" id="asset-list">
+        <div class="empty">Loading data…</div>
+      </div>
+    </section>
 
+    <section class="panel detail" id="detail-panel">
+      <div class="title">
+        <div>
+          <h2 id="detail-title">Pick a symbol</h2>
+          <div class="pill-row">
+            <span class="pill" id="detail-exchange"></span>
+            <span class="pill" id="detail-currency"></span>
+            <span class="pill" id="detail-updated"></span>
+          </div>
+        </div>
+        <div id="detail-change" class="delta muted">—</div>
+      </div>
+
+      <div class="metrics-grid" id="metrics-grid"></div>
+
+      <div class="chart-shell">
+        <canvas id="price-chart"></canvas>
+      </div>
+    </section>
+
+    <section class="panel insights">
+      <header>
+        <h3>Signals</h3>
+        <span class="muted" id="insights-caption">Top movers from cached history.</span>
+      </header>
+      <div class="insights-grid" id="insights-grid">
+        <div class="empty">Loading insights…</div>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/app.js"></script>
 </body>
 
 </html>

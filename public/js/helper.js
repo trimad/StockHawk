@@ -111,7 +111,7 @@ class Helper {
     }
   }
 
-  const CONFIG = JSON.parse(loadData("config.json"));
+  CONFIG = JSON.parse(loadData("config.json"));
 
   static buildTable = function (arr, headID, bodyID) {
     if (arr.length > 0) {
